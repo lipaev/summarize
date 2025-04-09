@@ -1,4 +1,4 @@
 @echo off
-cd C:\JupyterNotebook
-call C:\JupyterNotebook\.venv\Scripts\activate
-python C:\JupyterNotebook\summarize.py
+cd C:/repos/summarize
+call C:/repos/summarize/venv/Scripts/activate
+python C:/repos/summarize/summarize.py
