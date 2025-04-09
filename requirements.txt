@@ -1,0 +1,4 @@
+google-genai
+youtube-transcript-api
+rich
+python-dotenv
