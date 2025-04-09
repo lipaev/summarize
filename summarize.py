@@ -1,4 +1,5 @@
 from google import genai
+from google.api_core import retry
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 from rich.markdown import Markdown
@@ -10,6 +11,8 @@ import dotenv
 
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
 chat = client.chats.create(model="gemini-2.0-flash-001", history=[])
+is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
+chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
 console = Console()
 
@@ -68,7 +71,7 @@ def send_question(**kwargs) -> None:
 
         stream = chat.send_message_stream(question)
 
-        with Live(refresh_per_second=60) as live:
+        with Live(refresh_per_second=10) as live:
             full_text = ""
             for chunk in stream:
                 if chunk.text:
@@ -89,7 +92,7 @@ def clear_history(**kwargs) -> None:
     console.print("[#77DD77]Chat history has been cleared.[/]")
 
 def exit(**kwargs):
-    print("Exiting the program. exit")
+    console.print("Exiting the program.", style='blue')
     sys.exit()
 
 tasks = {
@@ -100,7 +103,7 @@ tasks = {
 }
 questions = {
     '1': "Retell without advertising and a unnecessary information. Make the reply more lively and intersting.",
-    '2': "Перескажи без рекламы и неважной информации. Сделай ответ более живым и интересным.",
+    '2': "Перескажи без рекламы и неважной информации. Сделай ответ более интересным.",
     '3': "Clear chat history.",
     '4': "Exit."
 }
@@ -143,4 +146,5 @@ def main():
         except Exception as e:
             console.print(f"An unexpected error occurred: {e}", style='red')
 
-main()
+if __name__ == "__main__":
+    main()
