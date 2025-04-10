@@ -1,5 +1,6 @@
 from google import genai
 from google.api_core import retry
+from google.genai import types
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 from rich.markdown import Markdown
@@ -15,6 +16,7 @@ is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429
 chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
 console = Console()
+uri = ""
 
 def answer_chek(innput: str='') -> str:
     """
@@ -40,8 +42,10 @@ def get_trancript() -> str:
     """
     Retrieve the transcript from a YouTube video.
     """
+    global uri
     while True:
-        video_id = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ").split('=')[-1]
+        uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+        video_id = uri.split('=')[-1]
         if video_id.lower() == '/skip':
             return ""
         try:
@@ -82,6 +86,45 @@ def send_question(**kwargs) -> None:
         question = answer_chek("[#77DD77]Your question is: [/]")
         if question.lower() == '/skip':
             return ""
+
+def request_about_video(**kwargs) -> None:
+    """
+    You can include a YouTube URL with a prompt asking the model to summarize, translate, or otherwise interact with the video content.
+
+    Limitations:
+     • You can't upload more than 8 hours of YouTube video per day.
+     • You can upload only 1 video per request.
+     • You can only upload public videos (not private or unlisted videos).
+
+    Note: Gemini Pro, which has a 2M context window, can handle a maximum video length of 2 hours, and Gemini Flash, which has a 1M context window, can handle a maximum video length of 1 hour.
+    """
+    global uri
+
+    while True:
+
+        question = answer_chek("[#77DD77]Your question about the video is: [/]")
+        if question.lower() == '/skip':
+            return ""
+
+        stream = client.models.generate_content_stream(
+            model='models/gemini-2.0-flash-001',
+            contents=types.Content(
+                parts=[
+                    types.Part(text=question),
+                    types.Part(
+                        file_data=types.FileData(file_uri=uri)
+                    )
+                ]
+            )
+        )
+
+        with Live(refresh_per_second=10) as live:
+            full_text = ""
+            for chunk in stream:
+                if chunk.text:
+                    full_text += chunk.text
+                    # Обновляем содержимое рамки
+                    live.update(Panel(Markdown(full_text), title="Gemini's Answer", border_style="bold green"))
 
 def clear_history(**kwargs) -> None:
     """
@@ -134,16 +177,18 @@ def exit(**kwargs):
 tasks = {
     '1': send_question,
     '2': send_question,
-    "3": clear_history,
-    '4': show_history,
-    '5': exit
+    "3": request_about_video,
+    '4': clear_history,
+    '5': show_history,
+    '6': exit
 }
 questions = {
-    '1': "Retell without advertising and a unnecessary information. Make the reply more lively and intersting.",
-    '2': "Перескажи без рекламы и неважной информации. Сделай ответ более интересным.",
-    '3': "Clear chat history.",
-    '4': "Show chat history",
-    '5': "Exit."
+    '1': "Retell without advertising and a unnecessary information.",
+    '2': "Перескажи без рекламы и неважной информации.",
+    '3': "Comprehensive video analysis.",
+    '4': "Clear chat history.",
+    '5': "Show chat history.",
+    '6': "Exit."
 }
 
 def proceed_a_task() -> None:
