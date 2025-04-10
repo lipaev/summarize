@@ -91,6 +91,42 @@ def clear_history(**kwargs) -> None:
     chat = client.chats.create(model="gemini-2.0-flash-001", history=[])
     console.print("[#77DD77]Chat history has been cleared.[/]")
 
+def show_history(**kwargs):
+    """
+    Displays the chat history by iterating through the messages and formatting
+    them based on their roles.
+    The function retrieves the chat history using `chat.get_history()`, processes
+    the messages to group consecutive messages from the same role, and prints
+    the formatted responses to the console.
+    Args:
+        **kwargs: Arbitrary keyword arguments (not used in the current implementation).
+    Returns:
+        None
+    """
+    chat_history = chat.get_history()
+    model_responses = []
+    previous_role = ''
+    for message in chat_history:
+        response = ''
+        role = message.role
+        for part in message.parts:
+                response += part.text
+        if previous_role == role:
+            model_responses[-1] += response
+        else:
+            previous_role = role
+            response = f"{role.capitalize()}: {response}"
+            model_responses.append(response)
+
+    def prepare(x: str) -> str:
+        if x.startswith("User"):
+            x = "[#FFDC33]" + x.rstrip() + "[/]"
+        else:
+            x = "[#0BDA51]" + x.rstrip() + "[/]"
+        return x
+
+    console.print(Panel("\n".join(map(prepare, model_responses)), title="Chat history", border_style="blue"))
+
 def exit(**kwargs):
     console.print("Exiting the program.", style='blue')
     sys.exit()
@@ -99,13 +135,15 @@ tasks = {
     '1': send_question,
     '2': send_question,
     "3": clear_history,
-    '4': exit
+    '4': show_history,
+    '5': exit
 }
 questions = {
     '1': "Retell without advertising and a unnecessary information. Make the reply more lively and intersting.",
     '2': "Перескажи без рекламы и неважной информации. Сделай ответ более интересным.",
     '3': "Clear chat history.",
-    '4': "Exit."
+    '4': "Show chat history",
+    '5': "Exit."
 }
 
 def proceed_a_task() -> None:
@@ -120,7 +158,7 @@ def proceed_a_task() -> None:
     options = ""
 
     for i, question in questions.items():
-        options += f"{i}. {question}\n"
+        options += f"[bold #FF6E4A]{i}.[/] [#FFB02E]{question}[/]\n"
 
     console.print(Panel(options[:-1], title="Select a task or type your question", border_style="red"))
 
