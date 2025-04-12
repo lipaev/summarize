@@ -1,6 +1,6 @@
 # YouTube Transcript Summarizer
 
-This Python script allows users to retrieve YouTube video transcripts and summarize them using Google's Gemini AI model. It provides an interactive console interface for users to input YouTube video links or IDs, ask questions, and receive summarized responses.
+This Python script allows to retrieve YouTube video transcripts and summarize them using Google's Gemini AI model. It provides an interactive console interface for users to input YouTube video links or IDs, ask questions, and receive summarized responses.
 
 [![2025-04-12-195708863.png](https://i.postimg.cc/RCjS3wPt/2025-04-12-195708863.png)](https://postimg.cc/0r0RFK15)
 
