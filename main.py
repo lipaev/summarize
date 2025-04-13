@@ -13,8 +13,12 @@ import sys
 import dotenv
 
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
-config = types.GenerateContentConfig(temperature=0.8, top_p=0.9)
-chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config, history=[])
+config_with_search = types.GenerateContentConfig(
+    tools=[types.Tool(google_search=types.GoogleSearch())],
+    temperature=0.8,
+    top_p=0.9
+    )
+chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config_with_search, history=[])
 #models/gemini-2.5-pro-exp-03-25
 #gemini-2.0-flash-001
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
@@ -74,11 +78,20 @@ def get_trancript() -> str:
 
 def live_update(stream, title="Gemini's Answer", border_style="bold green"):
     """
-    Continuously updates a live panel with streamed text content.
-
-        stream (iterable): An iterable that yields chunks of text data. Each chunk should have a `text` attribute.
-        title (str, optional): The title displayed on the panel. Defaults to "Gemini's Answer".
-        border_style (str, optional): The style of the panel's border. Defaults to "bold green".
+    Continuously updates a live panel with text and citations from a stream of data.
+    Args:
+        stream (iterable): An iterable stream of data chunks, where each chunk contains text and optional metadata.
+        title (str, optional): The title of the live panel. Defaults to "Gemini's Answer".
+        border_style (str, optional): The style of the panel border. Defaults to "bold green".
+    Behavior:
+        - Iterates over the provided stream of data chunks.
+        - Appends text from each chunk to the displayed content.
+        - If grounding metadata is present in a chunk, adds citations and links to the content.
+        - Updates the live panel in real-time with the processed content.
+    Notes:
+        - The function uses the `Live` class from the `rich` library to create and update the live panel.
+        - Citations are extracted from grounding metadata and formatted as Markdown links.
+        - Text segments are replaced with their corresponding citations when applicable.
     """
 
     with Live(refresh_per_second=10) as live:
@@ -86,6 +99,24 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
             for chunk in stream:
                 if chunk.text:
                     full_text += chunk.text
+
+                    if chunk.candidates[0].grounding_metadata and chunk.candidates[0].grounding_metadata.grounding_supports:
+                        full_text += "\n\n**Citations:**"
+                        chunks = chunk.candidates[0].grounding_metadata.grounding_chunks
+                        dictionary: dict = {}
+                        for i, _chunk in enumerate(chunks, start=1):
+                            full_text += f" {i} [{_chunk.web.title}]({_chunk.web.uri})"
+                            dictionary[i] = f"[{i}]({_chunk.web.uri})"
+
+                        supports = chunk.candidates[0].grounding_metadata.grounding_supports
+                        for support in supports:
+                            plus: str = support.segment.text
+
+                            for i in support.grounding_chunk_indices:
+                                plus += f"({dictionary[i+1]})"
+
+                            full_text = full_text.replace(support.segment.text, plus)
+
                     # Обновляем содержимое рамки
                     live.update(Panel(Markdown(full_text), title=title, border_style=border_style))
 
@@ -96,18 +127,63 @@ def send_question(**kwargs) -> None:
 
     transcript = kwargs.get("transcript", "")
     question = kwargs.get("question", "")
+    config = kwargs.get("config", None)
     if transcript:
         question = transcript + "\n" + question
 
     while True:
 
-        stream = chat.send_message_stream(question)
+        stream = chat.send_message_stream(question, config)
 
         live_update(stream)
 
         question = answer_chek("[#77DD77]Your question is: [/]")
         if check_skip(question):
             return ""
+
+def search(**kwargs):
+    config_with_search = types.GenerateContentConfig(
+    tools=[types.Tool(google_search=types.GoogleSearch())],
+    )
+
+    question = answer_chek("[#77DD77]Your search query is: [/]")
+    if check_skip(question):
+        return ""
+
+    send_question(question=question, config=config_with_search)
+
+def request_about_video(**kwargs) -> None:
+    """
+    You can include a YouTube URL with a prompt asking the model to summarize, translate, or otherwise interact with the video content.
+
+    Limitations:
+     • You can't upload more than 8 hours of YouTube video per day.
+     • You can upload only 1 video per request.
+     • You can only upload public videos (not private or unlisted videos).
+
+    Note: Gemini Pro, which has a 2M context window, can handle a maximum video length of 2 hours, and Gemini Flash, which has a 1M context window, can handle a maximum video length of 1 hour.
+    """
+    global uri
+
+    while True:
+
+        question = answer_chek("[#77DD77]Your question about the video is: [/]")
+        if check_skip(question):
+            return ""
+
+        stream = client.models.generate_content_stream(
+            model='models/gemini-2.0-flash-001',
+            contents=types.Content(
+                parts=[
+                    types.Part(text=question),
+                    types.Part(
+                        file_data=types.FileData(file_uri=uri)
+                    )
+                ]
+            )
+        )
+
+        live_update(stream)
 
 def parse_site(**kwargs):
 
@@ -143,39 +219,6 @@ def parse_site(**kwargs):
     site: str = return_site_text(url)
 
     send_question(transcript=site, question=question)
-
-def request_about_video(**kwargs) -> None:
-    """
-    You can include a YouTube URL with a prompt asking the model to summarize, translate, or otherwise interact with the video content.
-
-    Limitations:
-     • You can't upload more than 8 hours of YouTube video per day.
-     • You can upload only 1 video per request.
-     • You can only upload public videos (not private or unlisted videos).
-
-    Note: Gemini Pro, which has a 2M context window, can handle a maximum video length of 2 hours, and Gemini Flash, which has a 1M context window, can handle a maximum video length of 1 hour.
-    """
-    global uri
-
-    while True:
-
-        question = answer_chek("[#77DD77]Your question about the video is: [/]")
-        if check_skip(question):
-            return ""
-
-        stream = client.models.generate_content_stream(
-            model='models/gemini-2.0-flash-001',
-            contents=types.Content(
-                parts=[
-                    types.Part(text=question),
-                    types.Part(
-                        file_data=types.FileData(file_uri=uri)
-                    )
-                ]
-            )
-        )
-
-        live_update(stream)
 
 def clear_history(**kwargs) -> None:
     """
@@ -234,8 +277,8 @@ def exit(**kwargs):
 tasks = {
     '1': send_question,
     '2': send_question,
-    "3": parse_site,
-    '4': request_about_video,
+    "3": request_about_video,
+    '4': parse_site,
     '5': clear_history,
     '6': show_history,
     '7': exit
@@ -243,8 +286,8 @@ tasks = {
 questions = {
     '1': "Retell without advertising and a unnecessary information.",
     '2': "Перескажи без рекламы и неважной информации.",
-    '3': "Site analysis.",
-    '4': "Comprehensive video analysis.",
+    '3': "Comprehensive video analysis.",
+    '4': "Site analysis.",
     '5': "Clear chat history.",
     '6': "Show chat history.",
     '7': "Exit."
@@ -286,7 +329,7 @@ def main():
             print("\nExiting the program. main")
             sys.exit()
         except Exception as e:
-            console.print(f"An unexpected error occurred: {e}", style='red')
+            console.print_exception(show_locals=True)
 
 if __name__ == "__main__":
     main()
