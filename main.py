@@ -7,11 +7,16 @@ from rich.markdown import Markdown
 from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
+import requests
+from bs4 import BeautifulSoup
 import sys
 import dotenv
 
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
-chat = client.chats.create(model="gemini-2.0-flash-001", history=[])
+config = types.GenerateContentConfig(temperature=0.8, top_p=0.9)
+chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config, history=[])
+#models/gemini-2.5-pro-exp-03-25
+#gemini-2.0-flash-001
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
 chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
@@ -38,6 +43,12 @@ def answer_chek(innput: str='') -> str:
 
         return words
 
+def check_skip(answer: str) -> bool:
+    """
+    Check if the user input is '/skip'.
+    """
+    return answer.lower() == '/skip'
+
 def get_trancript() -> str:
     """
     Retrieve the transcript from a YouTube video.
@@ -46,7 +57,7 @@ def get_trancript() -> str:
     while True:
         uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
         video_id = uri.split('=')[-1]
-        if video_id.lower() == '/skip':
+        if check_skip(video_id):
             return ""
         try:
             transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'es', 'de'])
@@ -60,6 +71,23 @@ def get_trancript() -> str:
     #" ".join([entry.text for entry in transcript]).replace('[музыка]', ' ').replace('[аплодисменты]', ' ')
     text = text.replace('[музыка]', ' ').replace('[аплодисменты]', ' ').replace('\n', " ")
     return text
+
+def live_update(stream, title="Gemini's Answer", border_style="bold green"):
+    """
+    Continuously updates a live panel with streamed text content.
+
+        stream (iterable): An iterable that yields chunks of text data. Each chunk should have a `text` attribute.
+        title (str, optional): The title displayed on the panel. Defaults to "Gemini's Answer".
+        border_style (str, optional): The style of the panel's border. Defaults to "bold green".
+    """
+
+    with Live(refresh_per_second=10) as live:
+            full_text = ""
+            for chunk in stream:
+                if chunk.text:
+                    full_text += chunk.text
+                    # Обновляем содержимое рамки
+                    live.update(Panel(Markdown(full_text), title=title, border_style=border_style))
 
 def send_question(**kwargs) -> None:
     """
@@ -75,17 +103,46 @@ def send_question(**kwargs) -> None:
 
         stream = chat.send_message_stream(question)
 
-        with Live(refresh_per_second=10) as live:
-            full_text = ""
-            for chunk in stream:
-                if chunk.text:
-                    full_text += chunk.text
-                    # Обновляем содержимое рамки
-                    live.update(Panel(Markdown(full_text), title="Gemini's Answer", border_style="bold green"))
+        live_update(stream)
 
         question = answer_chek("[#77DD77]Your question is: [/]")
-        if question.lower() == '/skip':
+        if check_skip(question):
             return ""
+
+def parse_site(**kwargs):
+
+    url: str = answer_chek("[#77DD77]Enter the [#E66761]link[/]: [/]")
+    if check_skip(url):
+            return ""
+
+    def return_site_text(url):
+        """
+        This function fetches the text content of a webpage given its URL.
+        Args:
+            url: _description_
+
+        Returns:
+            _description_
+        """
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            text = soup.get_text(strip=True)
+
+            return text
+
+        except Exception as e:
+            return f"Ошибка: {e}"
+
+    question = answer_chek("[#77DD77]Your question is: [/]")
+    if check_skip(question):
+            return ""
+
+    site: str = return_site_text(url)
+
+    send_question(transcript=site, question=question)
 
 def request_about_video(**kwargs) -> None:
     """
@@ -103,7 +160,7 @@ def request_about_video(**kwargs) -> None:
     while True:
 
         question = answer_chek("[#77DD77]Your question about the video is: [/]")
-        if question.lower() == '/skip':
+        if check_skip(question):
             return ""
 
         stream = client.models.generate_content_stream(
@@ -118,13 +175,7 @@ def request_about_video(**kwargs) -> None:
             )
         )
 
-        with Live(refresh_per_second=10) as live:
-            full_text = ""
-            for chunk in stream:
-                if chunk.text:
-                    full_text += chunk.text
-                    # Обновляем содержимое рамки
-                    live.update(Panel(Markdown(full_text), title="Gemini's Answer", border_style="bold green"))
+        live_update(stream)
 
 def clear_history(**kwargs) -> None:
     """
@@ -132,7 +183,7 @@ def clear_history(**kwargs) -> None:
     """
     global chat
     chat = client.chats.create(model="gemini-2.0-flash-001", history=[])
-    console.print("[#77DD77]Chat history has been cleared.[/]")
+    console.print("[blue]Chat history has been cleared.[/]")
 
 def show_history(**kwargs):
     """
@@ -149,11 +200,17 @@ def show_history(**kwargs):
     chat_history = chat.get_history()
     model_responses = []
     previous_role = ''
+
     for message in chat_history:
         response = ''
+        # tp = type(message)
+        # if tp in [GenerateContentResponse, Content]:
+        #     role = 'model'
+        # elif tp == UserContent:
+        #     role = 'user'
         role = message.role
         for part in message.parts:
-                response += part.text
+            response += part.text
         if previous_role == role:
             model_responses[-1] += response
         else:
@@ -177,18 +234,20 @@ def exit(**kwargs):
 tasks = {
     '1': send_question,
     '2': send_question,
-    "3": request_about_video,
-    '4': clear_history,
-    '5': show_history,
-    '6': exit
+    "3": parse_site,
+    '4': request_about_video,
+    '5': clear_history,
+    '6': show_history,
+    '7': exit
 }
 questions = {
     '1': "Retell without advertising and a unnecessary information.",
     '2': "Перескажи без рекламы и неважной информации.",
-    '3': "Comprehensive video analysis.",
-    '4': "Clear chat history.",
-    '5': "Show chat history.",
-    '6': "Exit."
+    '3': "Site analysis.",
+    '4': "Comprehensive video analysis.",
+    '5': "Clear chat history.",
+    '6': "Show chat history.",
+    '7': "Exit."
 }
 
 def proceed_a_task() -> None:
@@ -208,7 +267,7 @@ def proceed_a_task() -> None:
     console.print(Panel(options[:-1], title="Select a task or type your question", border_style="red"))
 
     task_or_question = answer_chek("[#77DD77]The task number or your question is: [/]")
-    if task_or_question.lower() == '/skip':
+    if check_skip(task_or_question):
         return ""
 
     # Check if the input is a task number
