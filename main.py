@@ -15,6 +15,7 @@ import dotenv
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
 config_with_search = types.GenerateContentConfig(
     tools=[types.Tool(google_search=types.GoogleSearch())],
+    system_instruction='Answer as good as you can.',
     temperature=0.8,
     top_p=0.9
     )
@@ -172,7 +173,7 @@ def request_about_video(**kwargs) -> None:
             return ""
 
         stream = client.models.generate_content_stream(
-            model='models/gemini-2.0-flash-001',
+            model='models/gemini-2.5-pro-exp-03-25',
             contents=types.Content(
                 parts=[
                     types.Part(text=question),
@@ -286,7 +287,7 @@ tasks = {
 questions = {
     '1': "Retell without advertising and a unnecessary information.",
     '2': "Перескажи без рекламы и неважной информации.",
-    '3': "Comprehensive video analysis.",
+    '3': "Comprehensive video analysis. The video should be less than 1 hour.",
     '4': "Site analysis.",
     '5': "Clear chat history.",
     '6': "Show chat history.",
