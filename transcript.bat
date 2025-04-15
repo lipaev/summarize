@@ -1,4 +1,4 @@
 @echo off
-cd C:/repos/summarize
-call C:/repos/summarize/venv/Scripts/activate
-python C:/repos/summarize/main.py
+cd %~dp0
+call %~dp0/venv/Scripts/activate
+python %~dp0/main.py
