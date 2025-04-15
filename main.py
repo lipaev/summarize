@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.live import Live
 import requests
 from bs4 import BeautifulSoup
+import re
 import sys
 import dotenv
 
@@ -68,7 +69,7 @@ def get_trancript() -> str:
             transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'es', 'de'])
             break
         except CouldNotRetrieveTranscript as e:
-            console.print(f"Error retrieving transcript: {e}", style='red')
+            console.print(f"Error retrieving transcript: {e}")
 
     text = ""
     for entry in transcript:
@@ -95,31 +96,63 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
         - Text segments are replaced with their corresponding citations when applicable.
     """
 
-    with Live(refresh_per_second=10) as live:
+    with Live(refresh_per_second=6) as live:
             full_text = ""
             for chunk in stream:
                 if chunk.text:
                     full_text += chunk.text
+                    grounding_metadata = chunk.candidates[0].grounding_metadata
 
-                    if chunk.candidates[0].grounding_metadata and chunk.candidates[0].grounding_metadata.grounding_supports:
+                    if grounding_metadata and grounding_metadata.grounding_supports:
                         full_text += "\n\n**Citations:**"
-                        chunks = chunk.candidates[0].grounding_metadata.grounding_chunks
+                        chunks = grounding_metadata.grounding_chunks
                         dictionary: dict = {}
                         for i, _chunk in enumerate(chunks, start=1):
                             full_text += f" {i} [{_chunk.web.title}]({_chunk.web.uri})"
                             dictionary[i] = f"[{i}]({_chunk.web.uri})"
 
-                        supports = chunk.candidates[0].grounding_metadata.grounding_supports
+                        supports = grounding_metadata.grounding_supports
                         for support in supports:
                             plus: str = support.segment.text
 
                             for i in support.grounding_chunk_indices:
-                                plus += f"({dictionary[i+1]})"
-
+                                plus += f" ({dictionary[i+1]})"
+                            
                             full_text = full_text.replace(support.segment.text, plus)
 
-                    # Обновляем содержимое рамки
-                    live.update(Panel(Markdown(full_text), title=title, border_style=border_style))
+                        if grounding_metadata.search_entry_point.rendered_content:
+                            html_content = grounding_metadata.search_entry_point.rendered_content
+
+                            # Парсим HTML
+                            soup = BeautifulSoup(html_content, "html.parser")
+
+                            # Преобразуем HTML в Markdown
+                            html_content = ""
+                            for tag in soup.find_all():
+                                if tag.name == "h1":
+                                    html_content += f"# {tag.text}\n"
+                                elif tag.name == "p":
+                                    html_content += f"{tag.text}\n"
+                                elif tag.name == "a":
+                                    html_content += f"[{tag.text}]({tag['href']})\n"
+
+                            # Выводим с помощью rich
+                            full_text += '\n\nGoogle queries: ' + html_content
+
+                        def replace_citations_in_block(match_obj):
+                            lang = match_obj.group(1) if match_obj.group(1) else "" # Capture language identifier (optional)
+                            content = match_obj.group(2) # Capture the content of the code block
+                            # Replace all citation patterns like (1) with (1) inside the content
+                            modified_content = re.sub(r'\(\[(\d+)\]\(.*?\)\)', r'', content)#(\1)
+                            # Reconstruct the code block
+                            return f'```{lang}\n{modified_content}\n```'
+
+                        #Убирают ссылки внутри кода и сразу после, соответственно
+                        full_text = re.sub(r'```([a-zA-Z]*\W*)?\n(.*?)\n```', replace_citations_in_block, full_text, flags=re.DOTALL)
+                        full_text = re.sub(r'\n``` \(\[\d+\]\(.*?\)\)\n', r'\n```\n', full_text, flags=re.DOTALL)
+
+                    # Обновляем содержимое рамки. themes: native fruity
+                    live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
 
 def send_question(**kwargs) -> None:
     """
