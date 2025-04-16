@@ -117,7 +117,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
 
                             for i in support.grounding_chunk_indices:
                                 plus += f" ({dictionary[i+1]})"
-                            
+
                             full_text = full_text.replace(support.segment.text, plus)
 
                         if grounding_metadata.search_entry_point.rendered_content:
@@ -206,7 +206,7 @@ def request_about_video(**kwargs) -> None:
             return ""
 
         stream = client.models.generate_content_stream(
-            model='models/gemini-2.5-pro-exp-03-25',
+            model='models/gemini-1.5-pro',
             contents=types.Content(
                 parts=[
                     types.Part(text=question),
