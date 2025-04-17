@@ -76,7 +76,7 @@ def get_trancript() -> str:
         text += entry.text + " "
     #" ".join([entry.text for entry in transcript]).replace('[музыка]', ' ').replace('[аплодисменты]', ' ')
     text = text.replace('[музыка]', ' ').replace('[аплодисменты]', ' ').replace('\n', " ")
-    return text
+    return "Youtube video transcript:\n" + text
 
 def live_update(stream, title="Gemini's Answer", border_style="bold green"):
     """
@@ -174,17 +174,6 @@ def send_question(**kwargs) -> None:
         question = answer_chek("[#77DD77]Your question is: [/]")
         if check_skip(question):
             return ""
-
-def search(**kwargs):
-    config_with_search = types.GenerateContentConfig(
-    tools=[types.Tool(google_search=types.GoogleSearch())],
-    )
-
-    question = answer_chek("[#77DD77]Your search query is: [/]")
-    if check_skip(question):
-        return ""
-
-    send_question(question=question, config=config_with_search)
 
 def request_about_video(**kwargs) -> None:
     """
