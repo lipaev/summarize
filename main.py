@@ -17,8 +17,8 @@ client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API
 config_with_search = types.GenerateContentConfig(
     tools=[types.Tool(google_search=types.GoogleSearch())],
     system_instruction='Answer as good as you can.',
-    temperature=0.8,
-    top_p=0.9
+    temperature=0.9,
+    top_p=0.92
     )
 chat = client.chats.create(model="models/gemini-2.5-flash-preview-04-17", config=config_with_search, history=[])
 #models/gemini-2.5-pro-exp-03-25
@@ -116,7 +116,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                             plus: str = support.segment.text
 
                             for i in support.grounding_chunk_indices:
-                                plus += f" ({dictionary[i+1]})"
+                                plus += f"[{dictionary[i+1]}]"
 
                             full_text = full_text.replace(support.segment.text, plus)
 
