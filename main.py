@@ -20,7 +20,7 @@ config_with_search = types.GenerateContentConfig(
     temperature=0.8,
     top_p=0.9
     )
-chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config_with_search, history=[])
+chat = client.chats.create(model="models/gemini-2.5-flash-preview-04-17", config=config_with_search, history=[])
 #models/gemini-2.5-pro-exp-03-25
 #gemini-2.0-flash-001
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
