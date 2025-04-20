@@ -103,7 +103,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                     full_text += chunk.text
                     grounding_metadata = chunk.candidates[0].grounding_metadata
 
-                    if grounding_metadata and grounding_metadata.grounding_supports:
+                    if grounding_metadata and grounding_metadata.grounding_supports and grounding_metadata.grounding_chunks:
                         full_text += "\n\n**Citations:**"
                         chunks = grounding_metadata.grounding_chunks
                         dictionary: dict = {}
@@ -120,7 +120,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
 
                             full_text = full_text.replace(support.segment.text, plus)
 
-                        if grounding_metadata.search_entry_point.rendered_content:
+                        if grounding_metadata.search_entry_point and grounding_metadata.search_entry_point.rendered_content:
                             html_content = grounding_metadata.search_entry_point.rendered_content
 
                             # Парсим HTML
@@ -309,7 +309,7 @@ tasks = {
 questions = {
     '1': "Retell without advertising and a unnecessary information.",
     '2': "Перескажи без рекламы и неважной информации.",
-    '3': "Comprehensive video analysis. The video should be less than 1 hour.",
+    '3': "Comprehensive video analysis. The video should be less than 2 hour.",
     '4': "Site analysis.",
     '5': "Clear chat history.",
     '6': "Show chat history.",
