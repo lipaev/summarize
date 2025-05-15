@@ -16,13 +16,14 @@ import dotenv
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
 config_with_search = types.GenerateContentConfig(
     tools=[types.Tool(google_search=types.GoogleSearch())],
-    system_instruction='Answer as good as you can.',
-    temperature=0.9,
-    top_p=0.92
+    temperature=0.8,
+    top_p=0.9,
+    thinking_config=types.ThinkingConfig(include_thoughts=False)
     )
-chat = client.chats.create(model="models/gemini-2.5-flash-preview-04-17", config=config_with_search, history=[])
+chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config_with_search, history=[])
 #models/gemini-2.5-pro-exp-03-25
 #gemini-2.0-flash-001
+#models/gemini-2.5-flash-preview-04-17
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
 chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
@@ -66,7 +67,7 @@ def get_trancript() -> str:
         if check_skip(video_id):
             return ""
         try:
-            transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'es', 'de'])
+            transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'uk', 'es', 'de'])
             break
         except CouldNotRetrieveTranscript as e:
             console.print(f"Error retrieving transcript: {e}")
@@ -195,7 +196,7 @@ def request_about_video(**kwargs) -> None:
             return ""
 
         stream = client.models.generate_content_stream(
-            model='models/gemini-1.5-pro',
+            model='models/gemini-2.5-flash-preview-04-17',
             contents=types.Content(
                 parts=[
                     types.Part(text=question),
@@ -308,7 +309,7 @@ tasks = {
 }
 questions = {
     '1': "Retell without advertising and a unnecessary information.",
-    '2': "Перескажи без рекламы и неважной информации.",
+    '2': "Перескажи на русском, без рекламы и неважной информации.",
     '3': "Comprehensive video analysis. The video should be less than 2 hour.",
     '4': "Site analysis.",
     '5': "Clear chat history.",

@@ -1,1 +1,4 @@
 yt_subtitle.ipynb
+build
+dist
+*.spec
