@@ -41,10 +41,6 @@ def answer_chek(innput: str='') -> str:
         if words.lower() == '/exit':
             print("Exiting the program.")
             sys.exit()
-        #elif words == '':
-            #if "Your text is empty." not in innput:
-                #innput = "[#E66761]Your text is empty.[/] " + innput
-            #continue
         elif words.lower() in ['/skip', '']:
             return '/skip'
 
@@ -63,9 +59,9 @@ def get_trancript() -> str:
     global uri
     while True:
         uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
-        video_id = uri.split('=')[-1]
-        if check_skip(video_id):
+        if check_skip(uri):
             return ""
+        video_id = uri.split('=')[1]
         try:
             transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'uk', 'es', 'de'])
             break
@@ -117,7 +113,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                             plus: str = support.segment.text
 
                             for i in support.grounding_chunk_indices:
-                                plus += f"[{dictionary[i+1]}]"
+                                plus += f"~{dictionary[i+1]}"
 
                             full_text = full_text.replace(support.segment.text, plus)
 
@@ -150,7 +146,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                         #Убирают ссылки внутри кода и сразу после, соответственно
                         full_text = re.sub(r'```([a-zA-Z]*\W*)?\n(.*?)\n```', replace_citations_in_block, full_text, flags=re.DOTALL)
                         full_text = re.sub(r'\n``` \(\[\d+\]\(.*?\)\)\n', r'\n```\n', full_text, flags=re.DOTALL)
-                        full_text = re.sub(' [i]', '')
+                        full_text = re.sub(r' \[i\]', r'', full_text)
 
                     # Обновляем содержимое рамки. themes: native fruity
                     live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
