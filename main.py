@@ -137,7 +137,6 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                                 elif tag.name == "a":
                                     html_content += f"[{tag.text}]({tag['href']})\n"
 
-                            # Выводим с помощью rich
                             full_text += '\n\nGoogle queries: ' + html_content
 
                         def replace_citations_in_block(match_obj):
@@ -151,6 +150,7 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                         #Убирают ссылки внутри кода и сразу после, соответственно
                         full_text = re.sub(r'```([a-zA-Z]*\W*)?\n(.*?)\n```', replace_citations_in_block, full_text, flags=re.DOTALL)
                         full_text = re.sub(r'\n``` \(\[\d+\]\(.*?\)\)\n', r'\n```\n', full_text, flags=re.DOTALL)
+                        full_text = re.sub(' [i]', '')
 
                     # Обновляем содержимое рамки. themes: native fruity
                     live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
@@ -308,9 +308,9 @@ tasks = {
     '7': exit
 }
 questions = {
-    '1': "Retell without advertising and a unnecessary information.",
-    '2': "Перескажи на русском, без рекламы и неважной информации.",
-    '3': "Comprehensive video analysis. The video should be less than 2 hour.",
+    '1': "Recount succinctly.",
+    '2': "Перескажи лаконично на русском.",
+    '3': "Comprehensive video analysis. The video must be less than 2 hour.",
     '4': "Site analysis.",
     '5': "Clear chat history.",
     '6': "Show chat history.",
