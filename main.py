@@ -27,8 +27,7 @@ chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config_wi
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
 chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
-console = Console()
-uri = ""
+console = Console(record=True)
 
 def answer_chek(innput: str='') -> str:
     """
@@ -56,17 +55,20 @@ def get_trancript() -> str:
     """
     Retrieve the transcript from a YouTube video.
     """
-    global uri
+
     while True:
         uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
         if check_skip(uri):
-            return ""
-        video_id = uri.split('=')[1]
+            return
+        if '=' in uri:
+            video_id = uri.split('=')[1]
+        else:
+            video_id = uri
         try:
             transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'uk', 'es', 'de'])
             break
         except CouldNotRetrieveTranscript as e:
-            console.print(f"Error retrieving transcript: {e}")
+                console.print(f"Error retrieving transcript: {e}")
 
     text = ""
     for entry in transcript:
@@ -94,62 +96,63 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
     """
 
     with Live(refresh_per_second=6) as live:
-            full_text = ""
-            for chunk in stream:
-                if chunk.text:
-                    full_text += chunk.text
-                    grounding_metadata = chunk.candidates[0].grounding_metadata
+        full_text = ""
+        for chunk in stream:
+            if chunk.text:
+                full_text += chunk.text
+                grounding_metadata = chunk.candidates[0].grounding_metadata
 
-                    if grounding_metadata and grounding_metadata.grounding_supports and grounding_metadata.grounding_chunks:
-                        full_text += "\n\n**Citations:**"
-                        chunks = grounding_metadata.grounding_chunks
-                        dictionary: dict = {}
-                        for i, _chunk in enumerate(chunks, start=1):
-                            full_text += f" {i} [{_chunk.web.title}]({_chunk.web.uri})"
-                            dictionary[i] = f"[{i}]({_chunk.web.uri})"
+                if grounding_metadata and grounding_metadata.grounding_supports and grounding_metadata.grounding_chunks:
+                    full_text += "\n\n**Citations:**"
+                    chunks = grounding_metadata.grounding_chunks
+                    dictionary: dict = {}
+                    for i, _chunk in enumerate(chunks, start=1):
+                        full_text += f" {i} [{_chunk.web.title}]({_chunk.web.uri})"
+                        dictionary[i] = f"[{i}]({_chunk.web.uri})"
 
-                        supports = grounding_metadata.grounding_supports
-                        for support in supports:
-                            plus: str = support.segment.text
+                    supports = grounding_metadata.grounding_supports
+                    for support in supports:
+                        plus: str = support.segment.text
 
-                            for i in support.grounding_chunk_indices:
-                                plus += f"~{dictionary[i+1]}"
+                        for i in support.grounding_chunk_indices:
+                            plus += f"~{dictionary[i+1]}"
 
-                            full_text = full_text.replace(support.segment.text, plus)
+                        full_text = full_text.replace(support.segment.text, plus)
 
-                        if grounding_metadata.search_entry_point and grounding_metadata.search_entry_point.rendered_content:
-                            html_content = grounding_metadata.search_entry_point.rendered_content
+                    if grounding_metadata.search_entry_point and grounding_metadata.search_entry_point.rendered_content:
+                        html_content = grounding_metadata.search_entry_point.rendered_content
 
-                            # Парсим HTML
-                            soup = BeautifulSoup(html_content, "html.parser")
+                        # Парсим HTML
+                        soup = BeautifulSoup(html_content, "html.parser")
 
-                            # Преобразуем HTML в Markdown
-                            html_content = ""
-                            for tag in soup.find_all():
-                                if tag.name == "h1":
-                                    html_content += f"# {tag.text}\n"
-                                elif tag.name == "p":
-                                    html_content += f"{tag.text}\n"
-                                elif tag.name == "a":
-                                    html_content += f"[{tag.text}]({tag['href']})\n"
+                        # Преобразуем HTML в Markdown
+                        html_content = ""
+                        for tag in soup.find_all():
+                            if tag.name == "h1":
+                                html_content += f"# {tag.text}\n"
+                            elif tag.name == "p":
+                                html_content += f"{tag.text}\n"
+                            elif tag.name == "a":
+                                html_content += f"[{tag.text}]({tag['href']})\n"
 
-                            full_text += '\n\nGoogle queries: ' + html_content
+                        full_text += '\n\nGoogle queries: ' + html_content
 
-                        def replace_citations_in_block(match_obj):
-                            lang = match_obj.group(1) if match_obj.group(1) else "" # Capture language identifier (optional)
-                            content = match_obj.group(2) # Capture the content of the code block
-                            # Replace all citation patterns like (1) with (1) inside the content
-                            modified_content = re.sub(r'\(\[(\d+)\]\(.*?\)\)', r'', content)#(\1)
-                            # Reconstruct the code block
-                            return f'```{lang}\n{modified_content}\n```'
+                    def replace_citations_in_block(match_obj):
+                        lang = match_obj.group(1) if match_obj.group(1) else "" # Capture language identifier (optional)
+                        content = match_obj.group(2) # Capture the content of the code block
+                        # Replace all citation patterns like (1) with (1) inside the content
+                        modified_content = re.sub(r'\(\[(\d+)\]\(.*?\)\)', r'', content)#(\1)
+                        # Reconstruct the code block
+                        return f'```{lang}\n{modified_content}\n```'
 
-                        #Убирают ссылки внутри кода и сразу после, соответственно
-                        full_text = re.sub(r'```([a-zA-Z]*\W*)?\n(.*?)\n```', replace_citations_in_block, full_text, flags=re.DOTALL)
-                        full_text = re.sub(r'\n``` \(\[\d+\]\(.*?\)\)\n', r'\n```\n', full_text, flags=re.DOTALL)
-                        full_text = re.sub(r' \[i\]', r'', full_text)
+                    #Убирают ссылки внутри кода и сразу после, соответственно
+                    full_text = re.sub(r'```([a-zA-Z]*\W*)?\n(.*?)\n```', replace_citations_in_block, full_text, flags=re.DOTALL)
+                    full_text = re.sub(r'\n``` \(\[\d+\]\(.*?\)\)\n', r'\n```\n', full_text, flags=re.DOTALL)
+                    full_text = re.sub(r' \[i\]', r'', full_text)
 
-                    # Обновляем содержимое рамки. themes: native fruity
-                    live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
+                # Обновляем содержимое рамки. themes: native fruity
+                live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
+        print(full_text)
 
 def send_question(**kwargs) -> None:
     """
@@ -170,7 +173,7 @@ def send_question(**kwargs) -> None:
 
         question = answer_chek("[#77DD77]Your question is: [/]")
         if check_skip(question):
-            return ""
+            return
 
 def request_about_video(**kwargs) -> None:
     """
@@ -183,7 +186,23 @@ def request_about_video(**kwargs) -> None:
 
     Note: Gemini Pro, which has a 2M context window, can handle a maximum video length of 2 hours, and Gemini Flash, which has a 1M context window, can handle a maximum video length of 1 hour.
     """
-    global uri
+
+    uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link:[/] ")
+    if check_skip(uri):
+        return
+
+    question = answer_chek("[#77DD77]Your question about the video is: [/]")
+    if check_skip(question):
+        return
+
+    stream = chat.send_message_stream([
+                types.Part(text=question),
+                types.Part(
+                    file_data=types.FileData(file_uri=uri)
+                )
+            ])
+
+    live_update(stream)
 
     while True:
 
@@ -191,17 +210,7 @@ def request_about_video(**kwargs) -> None:
         if check_skip(question):
             return ""
 
-        stream = client.models.generate_content_stream(
-            model='models/gemini-2.5-flash-preview-04-17',
-            contents=types.Content(
-                parts=[
-                    types.Part(text=question),
-                    types.Part(
-                        file_data=types.FileData(file_uri=uri)
-                    )
-                ]
-            )
-        )
+        stream = chat.send_message_stream(question)
 
         live_update(stream)
 
@@ -266,14 +275,9 @@ def show_history(**kwargs):
 
     for message in chat_history:
         response = ''
-        # tp = type(message)
-        # if tp in [GenerateContentResponse, Content]:
-        #     role = 'model'
-        # elif tp == UserContent:
-        #     role = 'user'
         role = message.role
         for part in message.parts:
-            response += part.text
+            response += "" if part.text is None else part.text
         if previous_role == role:
             model_responses[-1] += response
         else:
@@ -342,6 +346,10 @@ def proceed_a_task() -> None:
 
 def main():
     console.rule("YouTube Transcript Summarizer", style="bold green")
+
+    with open("error.log", "w", encoding="utf-8") as f:
+        pass
+
     while True:
         try:
             proceed_a_task()
@@ -350,6 +358,8 @@ def main():
             sys.exit()
         except Exception as e:
             console.print_exception(show_locals=True)
+            with open("error.log", "a", encoding="utf-8") as f:
+                f.write(console.export_text())
 
 if __name__ == "__main__":
     main()
