@@ -1,17 +1,20 @@
 from google import genai
 from google.api_core import retry
 from google.genai import types
+from google.genai.errors import ClientError
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 from rich.markdown import Markdown
 from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
+from pprint import pprint
 import requests
 from bs4 import BeautifulSoup
 import re
 import sys
 import dotenv
+
 
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
 config_with_search = types.GenerateContentConfig(
@@ -21,6 +24,7 @@ config_with_search = types.GenerateContentConfig(
     thinking_config=types.ThinkingConfig(include_thoughts=False)
     )
 chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config_with_search, history=[])
+#chat_2 = client.chats.create(model="gemini-2.5-pro-preview-05-06", history=[])
 #models/gemini-2.5-pro-exp-03-25
 #gemini-2.0-flash-001
 #models/gemini-2.5-flash-preview-04-17
@@ -68,13 +72,21 @@ def get_trancript() -> str:
             transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'uk', 'es', 'de'])
             break
         except CouldNotRetrieveTranscript as e:
-                console.print(f"Error retrieving transcript: {e}")
+            pprint(e.args)
+            with open("error.log", "w", encoding="utf-8") as f:
+                f.write(console.export_text())
+        except Exception as e:
+            console.print(f"Error retrieving trancript: {e}")
+            with open("error.log", "w", encoding="utf-8") as f:
+                f.write(console.export_text())
 
     text = ""
+
     for entry in transcript:
         text += entry.text + " "
     #" ".join([entry.text for entry in transcript]).replace('[музыка]', ' ').replace('[аплодисменты]', ' ')
     text = text.replace('[музыка]', ' ').replace('[аплодисменты]', ' ').replace('\n', " ")
+
     return "Youtube video transcript:\n" + text
 
 def live_update(stream, title="Gemini's Answer", border_style="bold green"):
@@ -152,7 +164,6 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
 
                 # Обновляем содержимое рамки. themes: native fruity
                 live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
-        print(full_text)
 
 def send_question(**kwargs) -> None:
     """
@@ -347,18 +358,16 @@ def proceed_a_task() -> None:
 def main():
     console.rule("YouTube Transcript Summarizer", style="bold green")
 
-    with open("error.log", "w", encoding="utf-8") as f:
-        pass
-
     while True:
         try:
             proceed_a_task()
-        except KeyboardInterrupt:
-            print("\nExiting the program. main")
-            sys.exit()
+        except ClientError as e:
+            pprint(e.details)
+            with open("error.log", "w", encoding="utf-8") as f:
+                f.write(console.export_text())
         except Exception as e:
-            console.print_exception(show_locals=True)
-            with open("error.log", "a", encoding="utf-8") as f:
+            pprint(e)
+            with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
 
 if __name__ == "__main__":
