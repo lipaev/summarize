@@ -1,19 +1,24 @@
-from google import genai
-from google.api_core import retry
-from google.genai import types
-from google.genai.errors import ClientError
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import CouldNotRetrieveTranscript
-from rich.markdown import Markdown
-from rich.console import Console
-from rich.panel import Panel
-from rich.live import Live
-from pprint import pprint
-import requests
-from bs4 import BeautifulSoup
 import re
 import sys
+import time
 import dotenv
+import requests
+
+from pprint import pprint
+from bs4 import BeautifulSoup
+
+from rich.live import Live
+from rich.panel import Panel
+from rich.console import Console
+from rich.markdown import Markdown
+
+from google import genai
+from google.genai import types
+from google.api_core import retry
+from google.genai.errors import ClientError
+
+from youtube_transcript_api._errors import CouldNotRetrieveTranscript
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 
 
 client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
@@ -23,31 +28,28 @@ config_with_search = types.GenerateContentConfig(
     top_p=0.9,
     thinking_config=types.ThinkingConfig(include_thoughts=False)
     )
-chat = client.chats.create(model="models/gemini-2.0-flash-001", config=config_with_search, history=[])
+chat = client.chats.create(model="models/gemini-2.0-flash", config=config_with_search, history=[])
 #chat_2 = client.chats.create(model="gemini-2.5-pro-preview-05-06", history=[])
-#models/gemini-2.5-pro-exp-03-25
-#gemini-2.0-flash-001
-#models/gemini-2.5-flash-preview-04-17
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
 chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
 console = Console(record=True)
 
+
 def answer_chek(innput: str='') -> str:
     """
     Check if the user wants to exit the program and whether they have typed the request.
     """
-    while True:
 
-        words = console.input(innput)
+    words = console.input(innput)
 
-        if words.lower() == '/exit':
-            print("Exiting the program.")
-            sys.exit()
-        elif words.lower() in ['/skip', '']:
-            return '/skip'
+    if words.lower() == '/exit':
+        print("Exiting the program.")
+        sys.exit()
+    elif words.lower() in ['/skip', '']:
+        return '/skip'
 
-        return words
+    return words
 
 def check_skip(answer: str) -> bool:
     """
@@ -60,31 +62,55 @@ def get_trancript() -> str:
     Retrieve the transcript from a YouTube video.
     """
 
+    attempt = 0
+    max_retries = 4
+    delay_seconds = 6
+
+    uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+    if check_skip(uri):
+        return
+
     while True:
-        uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
-        if check_skip(uri):
-            return
         if '=' in uri:
-            video_id = uri.split('=')[1]
+            video_id = uri.split('=')[1].split('&')[0]
         else:
             video_id = uri
         try:
             transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'uk', 'es', 'de'])
             break
         except CouldNotRetrieveTranscript as e:
-            pprint(e.args)
+            print(str(e).strip())
             with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
+            uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+            if check_skip(uri):
+                return
+        except (NoTranscriptFound, TranscriptsDisabled) as e:
+            print(f"Субтитры не найдены или отключены. {e}")
+            return
+
         except Exception as e:
-            console.print(f"Error retrieving trancript: {e}")
-            with open("error.log", "w", encoding="utf-8") as f:
-                f.write(console.export_text())
+            # Здесь мы ловим все остальные ошибки, включая нашу ParseError
+            # и возможные проблемы с сетью.
+            print(f"На попытке №{attempt + 1} произошла ошибка: {e}")
+
+            # Если это была последняя попытка, сообщаем о неудаче
+            if attempt == max_retries - 1:
+                print("Не удалось получить субтитры после нескольких попыток.")
+                uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+                if check_skip(uri):
+                    return
+                attempt = 0
+            else:
+                print(f"Ждем {delay_seconds} секунд перед следующей попыткой...")
+                time.sleep(delay_seconds)
+                attempt += 1
 
     text = ""
 
     for entry in transcript:
         text += entry.text + " "
-    #" ".join([entry.text for entry in transcript]).replace('[музыка]', ' ').replace('[аплодисменты]', ' ')
+
     text = text.replace('[музыка]', ' ').replace('[аплодисменты]', ' ').replace('\n', " ")
 
     return "Youtube video transcript:\n" + text
@@ -366,7 +392,7 @@ def main():
             with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
         except Exception as e:
-            pprint(e)
+            print(e)
             with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
 
