@@ -18,44 +18,57 @@ from google.api_core import retry
 from google.genai.errors import ClientError
 
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+from youtube_transcript_api import (
+    YouTubeTranscriptApi,
+    NoTranscriptFound,
+    TranscriptsDisabled,
+)
 
 
-client = genai.Client(api_key=dotenv.get_key('C:/repos/tg-bot/.env', 'GOOGLE_API_KEY'))
+client = genai.Client(api_key=dotenv.get_key("C:/repos/tg-bot/.env", "GOOGLE_API_KEY"))
 config_with_search = types.GenerateContentConfig(
     tools=[types.Tool(google_search=types.GoogleSearch())],
     temperature=0.8,
     top_p=0.9,
-    thinking_config=types.ThinkingConfig(include_thoughts=False)
-    )
-chat = client.chats.create(model="models/gemini-2.0-flash", config=config_with_search, history=[])
-#chat_2 = client.chats.create(model="gemini-2.5-pro-preview-05-06", history=[])
-is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {429, 503}# Определяем условие для повторных попыток
-chat.send_message_stream = retry.Retry(predicate=is_retriable)(chat.send_message_stream)# Оборачиваем метод в логику повторных попыток
+    thinking_config=types.ThinkingConfig(include_thoughts=False),
+)
+chat = client.chats.create(
+    model="models/gemini-2.5-flash", config=config_with_search, history=[]
+)
+# chat_2 = client.chats.create(model="gemini-2.5-pro-preview-05-06", history=[])
+is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {
+    429,
+    503,
+}  # Определяем условие для повторных попыток
+chat.send_message_stream = retry.Retry(predicate=is_retriable)(
+    chat.send_message_stream
+)  # Оборачиваем метод в логику повторных попыток
 ytt_api = YouTubeTranscriptApi()
 console = Console(record=True)
 
 
-def answer_chek(innput: str='') -> str:
+def answer_chek(innput: str = "") -> str:
     """
     Check if the user wants to exit the program and whether they have typed the request.
     """
 
     words = console.input(innput)
 
-    if words.lower() == '/exit':
+    if words.lower() == "/exit":
         print("Exiting the program.")
         sys.exit()
-    elif words.lower() in ['/skip', '']:
-        return '/skip'
+    elif words.lower() in ["/skip", ""]:
+        return "/skip"
 
     return words
+
 
 def check_skip(answer: str) -> bool:
     """
     Check if the user input is '/skip'.
     """
-    return answer.lower() == '/skip'
+    return answer.lower() == "/skip"
+
 
 def get_trancript() -> str:
     """
@@ -66,23 +79,29 @@ def get_trancript() -> str:
     max_retries = 4
     delay_seconds = 6
 
-    uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+    uri = answer_chek(
+        "[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] "
+    )
     if check_skip(uri):
         return
 
     while True:
-        if '=' in uri:
-            video_id = uri.split('=')[1].split('&')[0]
+        if "=" in uri:
+            video_id = uri.split("=")[1].split("&")[0]
         else:
             video_id = uri
         try:
-            transcript = ytt_api.fetch(video_id, languages=['ru', 'en', 'en-US', 'uk', 'es', 'de', 'be'])
+            transcript = ytt_api.fetch(
+                video_id, languages=["ru", "en", "en-US", "uk", "es", "de", "be"]
+            )
             break
         except CouldNotRetrieveTranscript as e:
             print(str(e).strip())
             with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
-            uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+            uri = answer_chek(
+                "[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] "
+            )
             if check_skip(uri):
                 return
         except (NoTranscriptFound, TranscriptsDisabled) as e:
@@ -97,7 +116,9 @@ def get_trancript() -> str:
             # Если это была последняя попытка, сообщаем о неудаче
             if attempt == max_retries - 1:
                 print("Не удалось получить субтитры после нескольких попыток.")
-                uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] ")
+                uri = answer_chek(
+                    "[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] "
+                )
                 if check_skip(uri):
                     return
                 attempt = 0
@@ -111,7 +132,9 @@ def get_trancript() -> str:
     for entry in transcript:
         text += entry.text + " "
 
-    text = text.replace('[музыка]', ' ').replace('[аплодисменты]', ' ').replace('\n', " ")
+    text = (
+        text.replace("[аплодисменты]", " ").replace("\n", " ")
+    )
 
     return "Youtube video transcript:\n" + text
 
@@ -140,7 +163,11 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                 full_text += chunk.text
                 grounding_metadata = chunk.candidates[0].grounding_metadata
 
-                if grounding_metadata and grounding_metadata.grounding_supports and grounding_metadata.grounding_chunks:
+                if (
+                    grounding_metadata
+                    and grounding_metadata.grounding_supports
+                    and grounding_metadata.grounding_chunks
+                ):
                     full_text += "\n\n**Citations:**"
                     chunks = grounding_metadata.grounding_chunks
                     dictionary: dict = {}
@@ -157,8 +184,13 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
 
                         full_text = full_text.replace(support.segment.text, plus)
 
-                    if grounding_metadata.search_entry_point and grounding_metadata.search_entry_point.rendered_content:
-                        html_content = grounding_metadata.search_entry_point.rendered_content
+                    if (
+                        grounding_metadata.search_entry_point
+                        and grounding_metadata.search_entry_point.rendered_content
+                    ):
+                        html_content = (
+                            grounding_metadata.search_entry_point.rendered_content
+                        )
 
                         # Парсим HTML
                         soup = BeautifulSoup(html_content, "html.parser")
@@ -173,23 +205,46 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                             elif tag.name == "a":
                                 html_content += f"[{tag.text}]({tag['href']})\n"
 
-                        full_text += '\n\nGoogle queries: ' + html_content
+                        full_text += "\n\nGoogle queries: " + html_content
 
                     def replace_citations_in_block(match_obj):
-                        lang = match_obj.group(1) if match_obj.group(1) else "" # Capture language identifier (optional)
-                        content = match_obj.group(2) # Capture the content of the code block
+                        lang = (
+                            match_obj.group(1) if match_obj.group(1) else ""
+                        )  # Capture language identifier (optional)
+                        content = match_obj.group(
+                            2
+                        )  # Capture the content of the code block
                         # Replace all citation patterns like (1) with (1) inside the content
-                        modified_content = re.sub(r'\(\[(\d+)\]\(.*?\)\)', r'', content)#(\1)
+                        modified_content = re.sub(
+                            r"\(\[(\d+)\]\(.*?\)\)", r"", content
+                        )  # (\1)
                         # Reconstruct the code block
-                        return f'```{lang}\n{modified_content}\n```'
+                        return f"```{lang}\n{modified_content}\n```"
 
-                    #Убирают ссылки внутри кода и сразу после, соответственно
-                    full_text = re.sub(r'```([a-zA-Z]*\W*)?\n(.*?)\n```', replace_citations_in_block, full_text, flags=re.DOTALL)
-                    full_text = re.sub(r'\n``` \(\[\d+\]\(.*?\)\)\n', r'\n```\n', full_text, flags=re.DOTALL)
-                    full_text = re.sub(r' \[i\]', r'', full_text)
+                    # Убирают ссылки внутри кода и сразу после, соответственно
+                    full_text = re.sub(
+                        r"```([a-zA-Z]*\W*)?\n(.*?)\n```",
+                        replace_citations_in_block,
+                        full_text,
+                        flags=re.DOTALL,
+                    )
+                    full_text = re.sub(
+                        r"\n``` \(\[\d+\]\(.*?\)\)\n",
+                        r"\n```\n",
+                        full_text,
+                        flags=re.DOTALL,
+                    )
+                    full_text = re.sub(r" \[i\]", r"", full_text)
 
                 # Обновляем содержимое рамки. themes: native fruity
-                live.update(Panel(Markdown(full_text, code_theme='native'), title=title, border_style=border_style))
+                live.update(
+                    Panel(
+                        Markdown(full_text, code_theme="native"),
+                        title=title,
+                        border_style=border_style,
+                    )
+                )
+
 
 def send_question(**kwargs) -> None:
     """
@@ -212,6 +267,7 @@ def send_question(**kwargs) -> None:
         if check_skip(question):
             return
 
+
 def request_about_video(**kwargs) -> None:
     """
     You can include a YouTube URL with a prompt asking the model to summarize, translate, or otherwise interact with the video content.
@@ -232,12 +288,9 @@ def request_about_video(**kwargs) -> None:
     if check_skip(question):
         return
 
-    stream = chat.send_message_stream([
-                types.Part(text=question),
-                types.Part(
-                    file_data=types.FileData(file_uri=uri)
-                )
-            ])
+    stream = chat.send_message_stream(
+        [types.Part(text=question), types.Part(file_data=types.FileData(file_uri=uri))]
+    )
 
     live_update(stream)
 
@@ -251,11 +304,12 @@ def request_about_video(**kwargs) -> None:
 
         live_update(stream)
 
+
 def parse_site(**kwargs):
 
     url: str = answer_chek("[#77DD77]Enter the [#E66761]link[/]: [/]")
     if check_skip(url):
-            return ""
+        return ""
 
     def return_site_text(url):
         """
@@ -270,7 +324,7 @@ def parse_site(**kwargs):
             response = requests.get(url)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
             text = soup.get_text(strip=True)
 
             return text
@@ -280,11 +334,12 @@ def parse_site(**kwargs):
 
     question = answer_chek("[#77DD77]Your question is: [/]")
     if check_skip(question):
-            return ""
+        return ""
 
     site: str = return_site_text(url)
 
     send_question(transcript=site, question=question)
+
 
 def clear_history(**kwargs) -> None:
     """
@@ -293,6 +348,7 @@ def clear_history(**kwargs) -> None:
     global chat
     chat = client.chats.create(model="gemini-2.0-flash-001", history=[])
     console.print("[blue]Chat history has been cleared.[/]")
+
 
 def show_history(**kwargs):
     """
@@ -308,10 +364,10 @@ def show_history(**kwargs):
     """
     chat_history = chat.get_history()
     model_responses = []
-    previous_role = ''
+    previous_role = ""
 
     for message in chat_history:
-        response = ''
+        response = ""
         role = message.role
         for part in message.parts:
             response += "" if part.text is None else part.text
@@ -329,30 +385,39 @@ def show_history(**kwargs):
             x = "[#0BDA51]" + x.rstrip() + "[/]"
         return x
 
-    console.print(Panel("\n".join(map(prepare, model_responses)), title="Chat history", border_style="blue"))
+    console.print(
+        Panel(
+            "\n".join(map(prepare, model_responses)),
+            title="Chat history",
+            border_style="blue",
+        )
+    )
+
 
 def exit(**kwargs):
-    console.print("Exiting the program.", style='blue')
+    console.print("Exiting the program.", style="blue")
     sys.exit()
 
+
 tasks = {
-    '1': send_question,
-    '2': send_question,
+    "1": send_question,
+    "2": send_question,
     "3": request_about_video,
-    '4': parse_site,
-    '5': clear_history,
-    '6': show_history,
-    '7': exit
+    "4": parse_site,
+    "5": clear_history,
+    "6": show_history,
+    "7": exit,
 }
 questions = {
-    '1': "Recount succinctly.",
-    '2': "Перескажи лаконично на русском.",
-    '3': "Comprehensive video analysis. The video must be less than 2 hour.",
-    '4': "Site analysis.",
-    '5': "Clear chat history.",
-    '6': "Show chat history.",
-    '7': "Exit."
+    "1": "Recount succinctly.",
+    "2": "Перескажи лаконично на русском.",
+    "3": "Comprehensive video analysis. The video must be less than 2 hour.",
+    "4": "Site analysis.",
+    "5": "Clear chat history.",
+    "6": "Show chat history.",
+    "7": "Exit.",
 }
+
 
 def proceed_a_task() -> None:
     """
@@ -368,7 +433,13 @@ def proceed_a_task() -> None:
     for i, question in questions.items():
         options += f"[bold #FF6E4A]{i}.[/] [#FFB02E]{question}[/]\n"
 
-    console.print(Panel(options[:-1], title="Select a task or type your question", border_style="red"))
+    console.print(
+        Panel(
+            options[:-1],
+            title="Select a task or type your question",
+            border_style="red",
+        )
+    )
 
     task_or_question = answer_chek("[#77DD77]The task number or your question is: [/]")
     if check_skip(task_or_question):
@@ -376,10 +447,13 @@ def proceed_a_task() -> None:
 
     # Check if the input is a task number
     if task_or_question in tasks.keys():
-        tasks[task_or_question](question=questions[task_or_question], transcript=transcript)
+        tasks[task_or_question](
+            question=questions[task_or_question], transcript=transcript
+        )
     else:
         # Treat the input as a question and send it to the chat
         send_question(question=task_or_question, transcript=transcript)
+
 
 def main():
     console.rule("YouTube Transcript Summarizer", style="bold green")
@@ -395,6 +469,7 @@ def main():
             print(e)
             with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
+
 
 if __name__ == "__main__":
     main()
