@@ -33,7 +33,7 @@ config_with_search = types.GenerateContentConfig(
     thinking_config=types.ThinkingConfig(include_thoughts=False),
 )
 chat = client.chats.create(
-    model="models/gemini-2.5-flash", config=config_with_search, history=[]
+    model="gemini-2.5-flash", config=config_with_search, history=[] #"models/gemini-flash-latest"
 )
 # chat_2 = client.chats.create(model="gemini-2.5-pro-preview-05-06", history=[])
 is_retriable = lambda e: isinstance(e, genai.errors.APIError) and e.code in {
@@ -47,7 +47,7 @@ ytt_api = YouTubeTranscriptApi()
 console = Console(record=True)
 
 
-def answer_chek(innput: str = "") -> str:
+def answer_check(innput: str = "") -> str:
     """
     Check if the user wants to exit the program and whether they have typed the request.
     """
@@ -70,7 +70,7 @@ def check_skip(answer: str) -> bool:
     return answer.lower() == "/skip"
 
 
-def get_trancript() -> str:
+def get_transcript() -> str:
     """
     Retrieve the transcript from a YouTube video.
     """
@@ -79,7 +79,7 @@ def get_trancript() -> str:
     max_retries = 4
     delay_seconds = 6
 
-    uri = answer_chek(
+    uri = answer_check(
         "[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] "
     )
     if check_skip(uri):
@@ -99,7 +99,7 @@ def get_trancript() -> str:
             print(str(e).strip())
             with open("error.log", "w", encoding="utf-8") as f:
                 f.write(console.export_text())
-            uri = answer_chek(
+            uri = answer_check(
                 "[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] "
             )
             if check_skip(uri):
@@ -116,7 +116,7 @@ def get_trancript() -> str:
             # Если это была последняя попытка, сообщаем о неудаче
             if attempt == max_retries - 1:
                 print("Не удалось получить субтитры после нескольких попыток.")
-                uri = answer_chek(
+                uri = answer_check(
                     "[#77DD77]Enter the [#E66761]YouTube[/] link or the [#E66761]video ID[/]:[/] "
                 )
                 if check_skip(uri):
@@ -132,11 +132,10 @@ def get_trancript() -> str:
     for entry in transcript:
         text += entry.text + " "
 
-    text = (
-        text.replace("[аплодисменты]", " ").replace("\n", " ")
-    )
+    text = text.replace("[аплодисменты]", " ").replace("\n", " ")
 
     return "Youtube video transcript:\n" + text
+
 
 def live_update(stream, title="Gemini's Answer", border_style="bold green"):
     """
@@ -203,9 +202,9 @@ def live_update(stream, title="Gemini's Answer", border_style="bold green"):
                             elif tag.name == "p":
                                 html_content += f"{tag.text}\n"
                             elif tag.name == "a":
-                                html_content += f"[{tag.text}]({tag['href']})\n"
+                                html_content += f"[{tag.text}]({tag['href']}),\n"
 
-                        full_text += "\n\nGoogle queries: " + html_content
+                        full_text += "\n\n**Google queries**: " + html_content
 
                     def replace_citations_in_block(match_obj):
                         lang = (
@@ -263,7 +262,7 @@ def send_question(**kwargs) -> None:
 
         live_update(stream)
 
-        question = answer_chek("[#77DD77]Your question is: [/]")
+        question = answer_check("[#77DD77]Your question is: [/]")
         if check_skip(question):
             return
 
@@ -280,11 +279,11 @@ def request_about_video(**kwargs) -> None:
     Note: Gemini Pro, which has a 2M context window, can handle a maximum video length of 2 hours, and Gemini Flash, which has a 1M context window, can handle a maximum video length of 1 hour.
     """
 
-    uri = answer_chek("[#77DD77]Enter the [#E66761]YouTube[/] link:[/] ")
+    uri = answer_check("[#77DD77]Enter the [#E66761]YouTube[/] link:[/] ")
     if check_skip(uri):
         return
 
-    question = answer_chek("[#77DD77]Your question about the video is: [/]")
+    question = answer_check("[#77DD77]Your question about the video is: [/]")
     if check_skip(question):
         return
 
@@ -296,7 +295,7 @@ def request_about_video(**kwargs) -> None:
 
     while True:
 
-        question = answer_chek("[#77DD77]Your question about the video is: [/]")
+        question = answer_check("[#77DD77]Your question about the video is: [/]")
         if check_skip(question):
             return ""
 
@@ -307,7 +306,7 @@ def request_about_video(**kwargs) -> None:
 
 def parse_site(**kwargs):
 
-    url: str = answer_chek("[#77DD77]Enter the [#E66761]link[/]: [/]")
+    url: str = answer_check("[#77DD77]Enter the [#E66761]link[/]: [/]")
     if check_skip(url):
         return ""
 
@@ -332,7 +331,7 @@ def parse_site(**kwargs):
         except Exception as e:
             return f"Ошибка: {e}"
 
-    question = answer_chek("[#77DD77]Your question is: [/]")
+    question = answer_check("[#77DD77]Your question is: [/]")
     if check_skip(question):
         return ""
 
@@ -408,6 +407,7 @@ tasks = {
     "6": show_history,
     "7": exit,
 }
+
 questions = {
     "1": "Recount succinctly.",
     "2": "Перескажи лаконично на русском.",
@@ -427,10 +427,12 @@ def proceed_a_task() -> None:
     number is selected, the corresponding task is executed. If a question is
     provided, it is sent for further processing.
     """
-    transcript = get_trancript()
+    transcript = get_transcript()
     options = ""
 
     for i, question in questions.items():
+        if i == "1" or i == "2":
+            question = f"«{question}»"
         options += f"[bold #FF6E4A]{i}.[/] [#FFB02E]{question}[/]\n"
 
     console.print(
@@ -441,7 +443,7 @@ def proceed_a_task() -> None:
         )
     )
 
-    task_or_question = answer_chek("[#77DD77]The task number or your question is: [/]")
+    task_or_question = answer_check("[#77DD77]The task number or your question is: [/]")
     if check_skip(task_or_question):
         return ""
 
